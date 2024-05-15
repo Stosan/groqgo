@@ -15,7 +15,9 @@ For the golang developer or AI/ML engineer who wants to run Groq LLMs on their o
 
 ## Installation and usage
 
-To use Groqgo, you need to obtain an API key from 
+To use Groqgo, you need to obtain an API key from https://console.groq.com/keys and create your .env key as:
+
+GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxxxxxxxxx"
 
 ```go
 go get github.com/Stosan/groqgo
@@ -23,6 +25,33 @@ go get github.com/Stosan/groqgo
 
 
 ```go
+package main
+
+import (
+
+	"github.com/Stosan/groqgo"
+)
+
+func LLM() (*groqgo.GroqChatArgs){
+	args := map[string]interface{}{
+		"model": "llama3-8b-8192",
+		"temperature":0.2,
+		"max_tokens": 5048,
+		"stream": true,
+		"stop":[]string{"Observation"},
+	}
+	
+	llm := groqgo.ChatGroq(args)
+	
+	return llm
+}
+
+
+func main() {
+	llm,_ := LLM()
+	res,_:=llm.ChatClient("Define the concept of AI?")
+	fmt.Print(res)
+}
 
 ```
 
