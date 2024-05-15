@@ -28,7 +28,7 @@ go get github.com/Stosan/groqgo
 package main
 
 import (
-
+"fmt"
 	"github.com/Stosan/groqgo"
 )
 
@@ -50,6 +50,9 @@ func LLM() (*groqgo.GroqChatArgs){
 func main() {
 	llm,_ := LLM()
 	res,_:=llm.ChatClient("Define the concept of AI?")
+    if err != groqgo.ChatError(err) {
+			fmt.Print(err.Error())
+		}
 	fmt.Print(res)
 }
 
