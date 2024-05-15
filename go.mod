@@ -1,4 +1,4 @@
-module groqgo
+module github.com/Stosan/groqgo
 
 go 1.20
 
