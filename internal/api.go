@@ -1,4 +1,4 @@
-package groqgo
+package internal
 
 import (
 	"bufio"
@@ -11,9 +11,11 @@ import (
 	"os"
 	"strings"
 	"github.com/joho/godotenv"
+	"github.com/Stosan/groqgo/types"
 )
 
-func Client(qp *ChatArgs) (string, error) {
+
+func Client(qp *types.ChatArgs) (string, error) {
 	// load .env file
 	err := godotenv.Load(".env")
 	if err != nil {
@@ -45,13 +47,13 @@ func Client(qp *ChatArgs) (string, error) {
 		return "", fmt.Errorf("error reading response body: %w", err)
 	}
 
-	var chatErr ChatError
+	var chatErr types.ChatError
 	if err := json.Unmarshal(responseData, &chatErr); err != nil {
 		return "", fmt.Errorf("error unmarshaling chat error: %w", err)
 	}
 
 
-	var response ChatCompletionResponse
+	var response types.ChatCompletionResponse
 	if err := json.Unmarshal(responseData, &response); err != nil {
 		return "", fmt.Errorf("error unmarshaling chat completion response: %w", err)
 	}
@@ -60,7 +62,7 @@ func Client(qp *ChatArgs) (string, error) {
 	return content, nil
 }
 
-func StreamClient(qp *ChatArgs) (string, error) {
+func StreamClient(qp *types.ChatArgs) (string, error) {
 	// load .env file
 	err := godotenv.Load(".env")
 
@@ -117,7 +119,7 @@ func StreamClient(qp *ChatArgs) (string, error) {
 			}
 
 			noPrefixLineBytes := []byte(noPrefixLine)
-			var chunk ChatCompletionChunkResponse
+			var chunk types.ChatCompletionChunkResponse
 			err = json.Unmarshal(noPrefixLineBytes, &chunk)
 			if err != nil {
 				fmt.Println("Error unmarshaling JSON:", err)

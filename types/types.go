@@ -1,4 +1,4 @@
-package groqgo
+package types
 
 type ChatError struct {
 	Error map[string]string
