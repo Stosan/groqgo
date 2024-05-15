@@ -1,7 +1,7 @@
 package main
 
 import (
-	sr "groqgo/src"
+	sr "github.com/Stosan/groqgo/src"
 	"reflect"
 	"testing"
 )
