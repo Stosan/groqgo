@@ -1,3 +1,5 @@
+/app
+main.go
 .env
 *_test.go
 /*_test.go

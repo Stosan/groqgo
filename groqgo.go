@@ -9,7 +9,7 @@ type GroqChatArgs struct {
 	*types.ChatArgs
 }
 
-func ChatGroq(kwargs ...map[string]interface{}) *types.ChatArgs{
+func ChatGroq(kwargs ...map[string]interface{}) *GroqChatArgs{
 	var args types.ChatArgs
 
 	for _, kwarg := range kwargs {
@@ -38,7 +38,7 @@ func ChatGroq(kwargs ...map[string]interface{}) *types.ChatArgs{
 
 		// ... other fields ...
 	}
-	return &args
+	return &GroqChatArgs{&args}
 }
 
 
