@@ -46,7 +46,7 @@ func Client(qp *types.ChatArgs) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error reading response body: %w", err)
 	}
-
+	// :TODO: catch error better
 	var chatErr types.ChatError
 	if err := json.Unmarshal(responseData, &chatErr); err != nil {
 		return "", fmt.Errorf("error unmarshaling chat error: %w", err)
