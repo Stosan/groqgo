@@ -4,6 +4,15 @@ type ChatError struct {
 	Error map[string]string
 }
 
+
+type ErrorResponse struct {
+    Error struct {
+        Message string `json:"message"`
+        Type    string `json:"type"`
+        Code    string `json:"code"`
+    } `json:"error"`
+}
+
 type ChatArgs struct {
 	Model       string              `json:"model"`
 	Messages    []map[string]string `json:"messages"`
