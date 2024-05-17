@@ -106,7 +106,7 @@ func StreamClient(qp *types.ChatArgs) (string, error) {
 		var result string
 		err := scanner.Err()
 		if err != nil || hasErrorPrefix {
-			return "", fmt.Errorf("error, %w", err)
+			panic(err)
 		}
 
 		if bytes.HasPrefix(scanner.Bytes(), errorPrefix) {
