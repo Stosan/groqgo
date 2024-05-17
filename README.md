@@ -33,15 +33,17 @@ import (
 )
 
 func LLM() (*groqgo.GroqChatArgs){
-	args := map[string]interface{}{
+	kwargs := []map[string]interface{}{{
 		"model": "llama3-8b-8192",
 		"temperature":0.2,
 		"max_tokens": 5048,
 		"stream": true,
 		"stop":[]string{"Observation"},
+	},
 	}
+	args := groqgo.ChatGroq(kwargs...)
 	
-	llm := groqgo.ChatGroq(args)
+	llm := &groqgo.GroqChatArgs{args.ChatArgs}
 	
 	return llm
 }
