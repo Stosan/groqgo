@@ -45,11 +45,16 @@ func ChatGroq(kwargs ...map[string]interface{}) *GroqChatArgs{
 
 
 // ChatClient sends a prompt to the chat client and returns the response.
-func (args *GroqChatArgs) ChatClient(prompt string) (string, ChatError) {
+func (args *GroqChatArgs) ChatClient(prompt string, system string) (string, ChatError) {
 	if args.ChatArgs.Messages == nil {
 		args.ChatArgs.Messages = make([]map[string]string, 0)
 	}
-	args.ChatArgs.Messages = append(args.ChatArgs.Messages, map[string]string{"role": "user", "content": prompt})
+	if system == ""{
+		args.ChatArgs.Messages = append(args.ChatArgs.Messages, map[string]string{"role": "user", "content": prompt})
+	}else{
+		args.ChatArgs.Messages = append(args.ChatArgs.Messages, map[string]string{"role": "user", "content": prompt},map[string]string{"role": "system", "content": prompt})
+	}
+
 	args.Stream = false
 	response, err := internal.Client(args.ChatArgs)
 	if err != nil {

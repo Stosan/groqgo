@@ -13,12 +13,14 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Stosan/groqgo/types"
 	"github.com/joho/godotenv"
 )
 
+var mu sync.Mutex
 
 func Client(qp *types.ChatArgs) (string, error) {
 	err := godotenv.Load(".env")
@@ -45,28 +47,39 @@ func Client(qp *types.ChatArgs) (string, error) {
 	// req.Header.Set("Custom-Header", "value")
 
 	client := &http.Client{}
-	resp, err := retryRequest(client, req)
-	if err != nil {
+	responseChan := make(chan *http.Response)
+	errorChan := make(chan error)
+
+	go func() {
+		resp, err := retryRequest(client, req)
+		if err != nil {
+			errorChan <- err
+			return
+		}
+		responseChan <- resp
+	}()
+
+	var resp *http.Response
+	select {
+	case resp = <-responseChan:
+	case err = <-errorChan:
 		return "", fmt.Errorf("error making HTTP request: %w", err)
+	case <-ctx.Done():
+		return "", fmt.Errorf("request timed out")
 	}
 	defer resp.Body.Close()
 
-	responseData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("error reading response body: %w", err)
-	}
-
-	print(string(responseData))
-
+	decoder := json.NewDecoder(resp.Body)
+	b,_:= io.ReadAll(resp.Body)
 	var clientErr types.ErrorResponse
-	if err := json.Unmarshal(responseData, &clientErr); err != nil {
+	if err := decoder.Decode(&clientErr); err != nil {
 		return "", fmt.Errorf("error unmarshaling chat error: %w", err)
-	} else if bytes.HasPrefix(responseData, []byte(`{"error"`)) {
+	} else if bytes.HasPrefix(b, []byte(`{"error"`)) {
 		return "", fmt.Errorf("API error: %v", clientErr)
 	}
 
 	var response types.ChatCompletionResponse
-	if err := json.Unmarshal(responseData, &response); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return "", fmt.Errorf("error unmarshaling chat completion response: %w", err)
 	}
 
