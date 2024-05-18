@@ -28,22 +28,21 @@ go get github.com/Stosan/groqgo
 package main
 
 import (
-"fmt"
+	"fmt"
 	"github.com/Stosan/groqgo"
 )
 
 func LLM() (*groqgo.GroqChatArgs){
+
 	kwargs := []map[string]interface{}{{
 		"model": "llama3-8b-8192",
 		"temperature":0.2,
 		"max_tokens": 5048,
 		"stream": true,
 		"stop":[]string{"Observation"},
-	},
-	}
-	args := groqgo.ChatGroq(kwargs...)
-	
-	llm := &groqgo.GroqChatArgs{args.ChatArgs}
+	}}
+
+	llm := groqgo.ChatGroq(kwargs...)
 	
 	return llm
 }
@@ -51,7 +50,9 @@ func LLM() (*groqgo.GroqChatArgs){
 
 func main() {
 	llm,_ := LLM()
-	res,_:=llm.ChatClient("Define the concept of AI?")
+	systemPrompt := "You are an AI assistant who excels at making comical statements just like Kevin Hart"
+	userPrompt := "Define the concept of AI?"
+	res,_:=llm.ChatClient(userPrompt,systemPrompt)
     if err != groqgo.ChatError(err) {
 			fmt.Print(err.Error())
 		}
