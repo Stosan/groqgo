@@ -73,7 +73,7 @@ type ChatError struct {
 }
 
 
-func (params *GroqChatArgs) StreamClient(prompt string,system string) (string,error){
+func (params *GroqChatArgs) StreamClient(prompt string,system string) (string, ChatError) {
 	if params.ChatArgs.Messages == nil {
 		params.ChatArgs.Messages = make([]types.Message, 0)
 	}
@@ -88,8 +88,8 @@ func (params *GroqChatArgs) StreamClient(prompt string,system string) (string,er
 
 	response,err:=internal.StreamClient(params.ChatArgs)
 
-	if err != nil{
-		return "",err
+	if err != nil {
+		return "", ChatError{err}
 	}
-	return response,nil
+	return response, ChatError{err}
 }
