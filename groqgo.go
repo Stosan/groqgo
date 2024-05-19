@@ -1,5 +1,6 @@
 package groqgo
 
+
 import (
 	"github.com/Stosan/groqgo/internal"
 	"github.com/Stosan/groqgo/types"
@@ -17,13 +18,16 @@ func ChatGroq(kwargs ...map[string]interface{}) *GroqChatArgs{
 			args.Model = val.(string)
 		}
 		if val, ok := kwarg["messages"]; ok {
-			args.Messages = val.([]map[string]string)
+			args.Messages = val.([]types.Message)
 		}
 		if val, ok := kwarg["temperature"]; ok {
 			args.Temperature = val.(float64)
 		}
 		if val, ok := kwarg["top_p"]; ok {
 			args.TopP= val.(float64)
+		}
+		if val, ok := kwarg["seed"]; ok {
+			args.Seed= val.(int)
 		}
 		if val, ok := kwarg["stream"]; ok {
 			args.Stream = val.(bool)
@@ -47,12 +51,12 @@ func ChatGroq(kwargs ...map[string]interface{}) *GroqChatArgs{
 // ChatClient sends a prompt to the chat client and returns the response.
 func (args *GroqChatArgs) ChatClient(prompt string, system string) (string, ChatError) {
 	if args.ChatArgs.Messages == nil {
-		args.ChatArgs.Messages = make([]map[string]string, 0)
+		args.ChatArgs.Messages = make([]types.Message, 0)
 	}
 	if system == ""{
-		args.ChatArgs.Messages = append(args.ChatArgs.Messages, map[string]string{"role": "user", "content": prompt})
+		args.ChatArgs.Messages = append(args.ChatArgs.Messages, types.Message{Role: "user", Content: prompt})
 	}else{
-		args.ChatArgs.Messages = append(args.ChatArgs.Messages, map[string]string{"role": "user", "content": prompt},map[string]string{"role": "system", "content": prompt})
+		args.ChatArgs.Messages = append(args.ChatArgs.Messages,types.Message{Role: "user", Content: prompt},types.Message{Role: "system", Content: system})
 	}
 
 	args.Stream = false
@@ -69,9 +73,21 @@ type ChatError struct {
 }
 
 
-func (params *GroqChatArgs) StreamClient(prompt string) (string,error){
-	params.ChatArgs.Messages = append(params.ChatArgs.Messages, map[string]string{"role": "user", "content": prompt})
+func (params *GroqChatArgs) StreamClient(prompt string,system string) (string,error){
+	if params.ChatArgs.Messages == nil {
+		params.ChatArgs.Messages = make([]types.Message, 0)
+	}
+
+	if system == ""{
+		params.ChatArgs.Messages = append(params.ChatArgs.Messages, types.Message{Role: "user", Content: prompt})
+	}else{
+		params.ChatArgs.Messages = append(params.ChatArgs.Messages,types.Message{Role: "user", Content: prompt},types.Message{Role: "system", Content: system})
+	}
+
+	params.Stream = true
+
 	response,err:=internal.StreamClient(params.ChatArgs)
+
 	if err != nil{
 		return "",err
 	}

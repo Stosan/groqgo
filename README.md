@@ -12,6 +12,7 @@ The goal of this library is to provide an easy, scalable, and hassle-free way to
 ## For whom
 
 For the golang developer or AI/ML engineer who wants to run Groq LLMs on their own Agentic/RAG/ChatBot, tightly coupled with their own application.
+It is blazing FAST; try it and see! 🏎️ 💨 💨 💨
 
 ## Installation and usage
 
