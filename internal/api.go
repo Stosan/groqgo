@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -69,7 +70,7 @@ func calculateRetryTimeout(retryCount int) time.Duration {
 }
 
 
-func Client(req *types.ChatArgs) (string, error) {
+func Client(req types.ChatArgs) (string, error) {
 	// Marshal the payload to JSON
 	reqJsonPayload, err := json.Marshal(req)
 
@@ -94,6 +95,19 @@ func Client(req *types.ChatArgs) (string, error) {
 	}
 
 	defer resp.Body.Close()
+	if resp.StatusCode == 400 {
+		// Read the response body
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("error reading response body: %w", err)
+		}
+
+		// Convert the response body to a string
+		bodyString := string(bodyBytes)
+
+		// Print the response body
+		fmt.Println(bodyString)
+	}
 
 	// Check if the response status indicates an error
 	if resp.StatusCode >= 400 {
@@ -121,7 +135,7 @@ func Client(req *types.ChatArgs) (string, error) {
 
 
 
-func StreamClient(req *types.ChatArgs) (string, error) {
+func StreamClient(req types.ChatArgs) (string, error) {
 	// Marshal the payload to JSON
 	reqJsonPayload, err := json.Marshal(req)
 	if err != nil {
@@ -135,18 +149,38 @@ func StreamClient(req *types.ChatArgs) (string, error) {
 	}
 
 	// Set request headers
-	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "text/event-stream")
 	request.Header.Set("Cache-Control", "no-cache")
 	request.Header.Set("Connection", "keep-alive")
 	request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", os.Getenv("GROQ_API_KEY")))
 
 	// Make the request
-	resp, err := httpClient.Do(request)
+	resp, err := retryRequest(httpClient, request)
 	if err != nil {
 		return "", fmt.Errorf("error making HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == 400 {
+		// Read the response body
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("error reading response body: %w", err)
+		}
+
+		// Convert the response body to a string
+		bodyString := string(bodyBytes)
+
+		// Print the response body
+		fmt.Println(bodyString)
+	}
+	// Check if the response status indicates an error
+	if resp.StatusCode >= 400 {
+		var clientErr *types.ErrorResponse
+		if err := json.NewDecoder(resp.Body).Decode(&clientErr); err != nil {
+			return "", fmt.Errorf("error unmarshaling error response: %w", err)
+		}
+		return "", fmt.Errorf("API error: %v", clientErr)
+	}
 
 	// Use a scanner to read the streaming response
 	scanner := bufio.NewScanner(resp.Body)

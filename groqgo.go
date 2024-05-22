@@ -6,11 +6,16 @@ import (
 	"github.com/Stosan/groqgo/types"
 )
 
-type GroqChatArgs struct {
-	*types.ChatArgs
+// ChatError represents a chat-related error.
+type ClientChatError struct {
+	error
 }
 
-func ChatGroq(kwargs ...map[string]interface{}) *GroqChatArgs{
+type GroqChatArgs struct {
+	types.ChatArgs
+}
+
+func ChatGroq(kwargs ...map[string]interface{}) GroqChatArgs{
 	var args types.ChatArgs
 
 	for _, kwarg := range kwargs {
@@ -42,14 +47,14 @@ func ChatGroq(kwargs ...map[string]interface{}) *GroqChatArgs{
 
 		// ... other fields ...
 	}
-	return &GroqChatArgs{&args}
+	return GroqChatArgs{args}
 }
 
 
 
 
 // ChatClient sends a prompt to the chat client and returns the response.
-func (args *GroqChatArgs) ChatClient(prompt string, system string) (string, ChatError) {
+func (args GroqChatArgs) ChatClient(prompt string, system string) (string,  error) {
 	if args.ChatArgs.Messages == nil {
 		args.ChatArgs.Messages = make([]types.Message, 0)
 	}
@@ -62,18 +67,14 @@ func (args *GroqChatArgs) ChatClient(prompt string, system string) (string, Chat
 	args.Stream = false
 	response, err := internal.Client(args.ChatArgs)
 	if err != nil {
-		return "", ChatError{err}
+		return "",  err
 	}
-	return response, ChatError{err}
-}
-
-// ChatError represents a chat-related error.
-type ChatError struct {
-	error
+	return response,  err
 }
 
 
-func (params *GroqChatArgs) StreamClient(prompt string,system string) (string, ChatError) {
+
+func (params GroqChatArgs) StreamClient(prompt string, system string) (string,  error) {
 	if params.ChatArgs.Messages == nil {
 		params.ChatArgs.Messages = make([]types.Message, 0)
 	}
@@ -86,10 +87,10 @@ func (params *GroqChatArgs) StreamClient(prompt string,system string) (string, C
 
 	params.Stream = true
 
-	response,err:=internal.StreamClient(params.ChatArgs)
+	response,err:= internal.StreamClient(params.ChatArgs)
 
 	if err != nil {
-		return "", ChatError{err}
+		return "",  err
 	}
-	return response, ChatError{err}
+	return response,  err
 }

@@ -64,5 +64,6 @@ type ChatCompletionChunkResponse struct {
 	Choices           []ChatCompletionChunkResponseChoice `json:"choices"`
 	XGroq             struct {
 		ID string `json:"id"`
+		Error string `json:"error,omitempty"`
 	} `json:"x_groq"`
 }
