@@ -133,9 +133,8 @@ func Client(req types.ChatArgs) (string, error) {
 
 
 
-
-
 func StreamClient(req types.ChatArgs) (string, error) {
+
 	// Marshal the payload to JSON
 	reqJsonPayload, err := json.Marshal(req)
 	if err != nil {
@@ -143,7 +142,7 @@ func StreamClient(req types.ChatArgs) (string, error) {
 	}
 
 	// Create a new HTTP request
-	request, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer([]byte(reqJsonPayload)))
+	request, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(reqJsonPayload))
 	if err != nil {
 		return "", fmt.Errorf("error creating HTTP request: %w", err)
 	}
@@ -155,105 +154,41 @@ func StreamClient(req types.ChatArgs) (string, error) {
 	request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", os.Getenv("GROQ_API_KEY")))
 
 	// Make the request
-	resp, err := retryRequest(httpClient, request)
+	resp, err := httpClient.Do(request)
 	if err != nil {
 		return "", fmt.Errorf("error making HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == 400 {
-		// Read the response body
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return "", fmt.Errorf("error reading response body: %w", err)
-		}
 
-		// Convert the response body to a string
-		bodyString := string(bodyBytes)
-
-		// Print the response body
-		fmt.Println(bodyString)
-	}
-	// Check if the response status indicates an error
-	if resp.StatusCode >= 400 {
-		var clientErr *types.ErrorResponse
-		if err := json.NewDecoder(resp.Body).Decode(&clientErr); err != nil {
-			return "", fmt.Errorf("error unmarshaling error response: %w", err)
-		}
-		return "", fmt.Errorf("API error: %v", clientErr)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	// Use a scanner to read the streaming response
 	scanner := bufio.NewScanner(resp.Body)
-	result := make(chan string)
-	errChan := make(chan error)
-	done := make(chan struct{})
+	result := strings.Builder{}
 
-	go func() {
-		defer close(result)
-		defer close(errChan)
-
-		var errorPrefix = []byte(`data: {"error":`)
-		var hasErrorPrefix bool
-
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			if bytes.HasPrefix(scanner.Bytes(), errorPrefix) {
-				hasErrorPrefix = true
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Check for data prefix
+		if strings.HasPrefix(line, "data:") {
+			noPrefixLine := strings.TrimPrefix(line, "data: ")
+			if noPrefixLine == "[DONE]" {
+				break
 			}
 
-			if hasErrorPrefix {
-				var clientErr types.ErrorResponse
-				if err := json.Unmarshal(scanner.Bytes(), &clientErr); err != nil {
-					errChan <- fmt.Errorf("error unmarshaling error response: %w", err)
-					return
-				}
-				errChan <- fmt.Errorf("API error: %v", clientErr)
-				return
+			var chunk types.ChatCompletionChunkResponse
+			if err := json.Unmarshal([]byte(noPrefixLine), &chunk); err != nil {
+				return "", fmt.Errorf("error unmarshaling chunk response: %w", err)
 			}
-		
-			if strings.HasPrefix(line, "data:") {
-				noPrefixLine := strings.TrimPrefix(line, "data: ")
-				if noPrefixLine == "[DONE]" {
-					break
-				}
-		
-				var chunk types.ChatCompletionChunkResponse
-				if err := json.Unmarshal([]byte(noPrefixLine), &chunk); err != nil {
-					errChan <- fmt.Errorf("error unmarshaling chunk response: %w", err)
-					return
-				}
 
-				result <- chunk.Choices[0].Delta.Content
-			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			errChan <- fmt.Errorf("error reading response body: %w", err)
-		}
-		close(done)
-	}()
-
-	var finalResult strings.Builder
-	for {
-		select {
-		case content, ok := <-result:
-			if !ok {
-				result = nil
-			} else {
-				finalResult.WriteString(content)
-			}
-		case err := <-errChan:
-			return "", err
-		case <-done:
-			return finalResult.String(), nil
-		}
-
-		if result == nil {
-			break
+			result.WriteString(chunk.Choices[0].Delta.Content)
 		}
 	}
 
-	return finalResult.String(), nil
-}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("error reading response body: %w", err)
+	}
 
+	return result.String(), nil
+}

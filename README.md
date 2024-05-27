@@ -36,9 +36,9 @@ import (
 func LLM() (*groqgo.GroqChatArgs){
 
 	kwargs := []map[string]interface{}{{
-		"model": "llama3-8b-8192",
+		"model": "claude-3-sonnet-20240229",
 		"temperature":0.2,
-		"max_tokens": 5048,
+		"max_tokens": 1024,
 		"stream": true,
 		"stop":[]string{"Observation"},
 	}}
