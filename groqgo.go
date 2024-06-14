@@ -54,7 +54,7 @@ func ChatGroq(kwargs ...map[string]interface{}) GroqChatArgs{
 
 
 // ChatClient sends a prompt to the chat client and returns the response.
-func (args GroqChatArgs) ChatClient(prompt string, system string) (string,  error) {
+func (args GroqChatArgs) Chat(prompt string, system string) (string,  error) {
 	if args.ChatArgs.Messages == nil {
 		args.ChatArgs.Messages = make([]types.Message, 0)
 	}
@@ -74,7 +74,7 @@ func (args GroqChatArgs) ChatClient(prompt string, system string) (string,  erro
 
 
 
-func (params GroqChatArgs) StreamClient(prompt string, system string) (string,  error) {
+func (params GroqChatArgs) StreamCompleteChat(prompt string, system string) (string,  error) {
 	if params.ChatArgs.Messages == nil {
 		params.ChatArgs.Messages = make([]types.Message, 0)
 	}
@@ -87,10 +87,35 @@ func (params GroqChatArgs) StreamClient(prompt string, system string) (string,  
 
 	params.Stream = true
 
-	response,err:= internal.StreamClient(params.ChatArgs)
+	response,err:= internal.StreamCompleteClient(params.ChatArgs)
 
 	if err != nil {
 		return "",  err
 	}
 	return response,  err
+}
+
+
+func (params GroqChatArgs) StreamChat(prompt string, system string)  <-chan string {
+	if params.ChatArgs.Messages == nil {
+		params.ChatArgs.Messages = make([]types.Message, 0)
+	}
+
+	if system == ""{
+		params.ChatArgs.Messages = append(params.ChatArgs.Messages, types.Message{Role: "user", Content: prompt})
+	}else{
+		params.ChatArgs.Messages = append(params.ChatArgs.Messages,types.Message{Role: "user", Content: prompt},types.Message{Role: "system", Content: system})
+	}
+
+	params.Stream = true
+	chunkchan := make(chan string)
+
+    go func() {
+        err := internal.StreamClient(params.ChatArgs, chunkchan)
+        if err != nil {
+           chunkchan <- err.Error()
+        }
+    }()
+
+    return chunkchan
 }

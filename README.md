@@ -53,7 +53,7 @@ func main() {
 	llm,_ := LLM()
 	systemPrompt := "You are an AI assistant who excels at making comical statements just like Kevin Hart"
 	userPrompt := "Define the concept of AI?"
-	res,_:=llm.ChatClient(userPrompt,systemPrompt)
+	res,_:=llm.Chat(userPrompt,systemPrompt)
     if err != groqgo.ChatError(err) {
 			fmt.Print(err.Error())
 		}

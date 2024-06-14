@@ -133,7 +133,7 @@ func Client(req types.ChatArgs) (string, error) {
 
 
 
-func StreamClient(req types.ChatArgs) (string, error) {
+func StreamCompleteClient(req types.ChatArgs) (string, error) {
 
 	// Marshal the payload to JSON
 	reqJsonPayload, err := json.Marshal(req)
@@ -191,4 +191,66 @@ func StreamClient(req types.ChatArgs) (string, error) {
 	}
 
 	return result.String(), nil
+}
+
+
+func StreamClient(req types.ChatArgs, chunkchan chan string)  error{
+
+	// Marshal the payload to JSON
+	reqJsonPayload, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("error marshaling JSON: %w", err)
+	}
+
+	// Create a new HTTP request
+	request, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(reqJsonPayload))
+	if err != nil {
+		return fmt.Errorf("error creating HTTP request: %w", err)
+	}
+
+	// Set request headers
+	request.Header.Set("Accept", "text/event-stream")
+	request.Header.Set("Cache-Control", "no-cache")
+	request.Header.Set("Connection", "keep-alive")
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", os.Getenv("GROQ_API_KEY")))
+
+	// Make the request
+	resp, err := httpClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("error making HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return  fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// Use a scanner to read the streaming response
+	scanner := bufio.NewScanner(resp.Body)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Check for data prefix
+		if strings.HasPrefix(line, "data:") {
+			noPrefixLine := strings.TrimPrefix(line, "data: ")
+			if noPrefixLine == "[DONE]" {
+				break
+			}
+
+			var chunk types.ChatCompletionChunkResponse
+			if err := json.Unmarshal([]byte(noPrefixLine), &chunk); err != nil {
+				return  fmt.Errorf("error unmarshaling chunk response: %w", err)
+			}
+
+			chunkchan <- chunk.Choices[0].Delta.Content
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading response body: %w", err)
+	}
+
+	// Close the channel after sending all words
+	defer close(chunkchan)
+	return nil
 }
