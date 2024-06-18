@@ -5,16 +5,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
+	"github.com/Stosan/groqgo/types"
+	"github.com/joho/godotenv"
 	"io"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
-	"github.com/Stosan/groqgo/types"
-	"github.com/joho/godotenv"
 )
 
 // Configure the HTTP transport for connection reuse
@@ -35,15 +35,12 @@ var httpClient = &http.Client{
 	Timeout:   0, // No timeout for streaming; use context for control
 }
 
-
-
 func init() {
 	// Load environment variables once during initialization
 	if err := godotenv.Load(".env"); err != nil {
 		panic(fmt.Sprintf("error loading .env file: %v", err))
 	}
 }
-
 
 func retryRequest(client *http.Client, req *http.Request) (*http.Response, error) {
 	var resp *http.Response
@@ -68,7 +65,6 @@ func calculateRetryTimeout(retryCount int) time.Duration {
 	jitter := sleepSeconds * (1 + 0.25*(rand.Float64()-0.5))
 	return time.Duration(jitter) * time.Second
 }
-
 
 func Client(req types.ChatArgs) (string, error) {
 	// Marshal the payload to JSON
@@ -123,15 +119,12 @@ func Client(req types.ChatArgs) (string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return "", fmt.Errorf("error unmarshaling chat completion response: %w", err)
 	}
-	
+
 	// Extract the content from the response
 	content := response.Choices[0].Message.Content
 
 	return content, nil
 }
-
-
-
 
 func StreamCompleteClient(req types.ChatArgs) (string, error) {
 
@@ -193,8 +186,7 @@ func StreamCompleteClient(req types.ChatArgs) (string, error) {
 	return result.String(), nil
 }
 
-
-func StreamClient(req types.ChatArgs, chunkchan chan string)  error{
+func StreamClient(req types.ChatArgs, chunkchan chan string) error {
 
 	// Marshal the payload to JSON
 	reqJsonPayload, err := json.Marshal(req)
@@ -221,35 +213,38 @@ func StreamClient(req types.ChatArgs, chunkchan chan string)  error{
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return  fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	if resp.StatusCode == 400 {
+		// Read the response body
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+
+		chunkchan <- string(bodyBytes)
 	}
 
 	// Use a scanner to read the streaming response
 	scanner := bufio.NewScanner(resp.Body)
-
 	for scanner.Scan() {
-		line := scanner.Text()
-		// Check for data prefix
-		if strings.HasPrefix(line, "data:") {
-			noPrefixLine := strings.TrimPrefix(line, "data: ")
-			if noPrefixLine == "[DONE]" {
+
+		line := scanner.Bytes()
+
+		if bytes.HasPrefix(line, []byte(`[DONE]`)) {
+			break
+		}
+		if bytes.HasPrefix(line, []byte(`data: `)) {
+			data := bytes.TrimPrefix(line, []byte(`data: `))
+			var chunk types.ChatCompletionChunkResponse
+			if err := json.Unmarshal(data, &chunk); err != nil {
+				return err
+			}
+
+			if bytes.Contains(data, []byte(`[DONE]`)) {
 				break
 			}
-
-			var chunk types.ChatCompletionChunkResponse
-			if err := json.Unmarshal([]byte(noPrefixLine), &chunk); err != nil {
-				return  fmt.Errorf("error unmarshaling chunk response: %w", err)
-			}
-
 			chunkchan <- chunk.Choices[0].Delta.Content
 		}
 	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
-	}
-
 	// Close the channel after sending all words
 	defer close(chunkchan)
 	return nil
