@@ -5,17 +5,42 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/Stosan/groqgo/types"
-	"github.com/joho/godotenv"
 	"io"
+	"log"
 	"math"
 	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/Stosan/groqgo/types"
 )
+
+// RateLimiter is a simple rate limiter implementation
+type RateLimiter struct {
+	sync.Mutex
+	lastRequest time.Time
+	maxRate     time.Duration
+}
+
+// Wait blocks until it's time to allow the next request
+func (r *RateLimiter) Wait() {
+	r.Lock()
+	defer r.Unlock()
+	now := time.Now()
+	if elapsed := now.Sub(r.lastRequest); elapsed < r.maxRate {
+		time.Sleep(r.maxRate - elapsed)
+	}
+	r.lastRequest = now
+}
+
+// rateLimiter is a global rate limiter instance
+var rateLimiter = RateLimiter{
+	maxRate: 1 * time.Second, // Adjust the rate limit as needed
+}
 
 // Configure the HTTP transport for connection reuse
 var transport = &http.Transport{
@@ -33,13 +58,6 @@ var transport = &http.Transport{
 var httpClient = &http.Client{
 	Transport: transport,
 	Timeout:   0, // No timeout for streaming; use context for control
-}
-
-func init() {
-	// Load environment variables once during initialization
-	if err := godotenv.Load(".env"); err != nil {
-		panic(fmt.Sprintf("error loading .env file: %v", err))
-	}
 }
 
 func retryRequest(client *http.Client, req *http.Request) (*http.Response, error) {
@@ -66,60 +84,77 @@ func calculateRetryTimeout(retryCount int) time.Duration {
 	return time.Duration(jitter) * time.Second
 }
 
+func checkEnvVar() {
+	// Check for the required environment variable
+	groqAPIKey := os.Getenv("GROQ_API_KEY")
+	if groqAPIKey == "" {
+		log.Fatal(`
+GROQ_API_KEY is not set or is empty. 
+Please set it in the .env file as follows:
+
+    GROQ_API_KEY="your_groq_api_key_here"
+
+Make sure to replace "your_groq_api_key_here" with your actual Groq API key.
+If you don't have a .env file, create one in the root directory of your project.
+`)
+	}
+}
+
 func Client(req types.ChatArgs) (string, error) {
+	checkEnvVar()
+	// Wait for rate limiter
+	//rateLimiter.Wait()
 	// Marshal the payload to JSON
 	reqJsonPayload, err := json.Marshal(req)
 
 	if err != nil {
-		return "", fmt.Errorf("error marshaling JSON: %w", err)
+		return err.Error(), fmt.Errorf("error marshaling JSON: %w", err)
 	}
 
 	// Create a new HTTP request
 	request, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer([]byte(reqJsonPayload)))
 	if err != nil {
-		return "", fmt.Errorf("error creating HTTP request: %w", err)
+		return err.Error(), fmt.Errorf("error creating HTTP request: %w", err)
 	}
 
 	// Set request headers
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", os.Getenv("GROQ_API_KEY")))
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", os.Getenv("GROQ_API_KEY")))
 
 	// Make the request with retry logic
 	resp, err := retryRequest(httpClient, request)
 	if err != nil {
-		return "", fmt.Errorf("error making HTTP request: %w", err)
+		return err.Error(), fmt.Errorf("error making HTTP request: %w", err)
 	}
-
+	// print(resp.StatusCode)
 	defer resp.Body.Close()
 	if resp.StatusCode == 400 {
 		// Read the response body
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return "", fmt.Errorf("error reading response body: %w", err)
+			return err.Error(), fmt.Errorf("error reading response body: %w", err)
 		}
 
 		// Convert the response body to a string
 		bodyString := string(bodyBytes)
 
 		// Print the response body
-		fmt.Println(bodyString)
+		return bodyString, nil
 	}
-
 	// Check if the response status indicates an error
 	if resp.StatusCode >= 400 {
-		var clientErr *types.ErrorResponse
+		var clientErr types.ChatError
 		if err := json.NewDecoder(resp.Body).Decode(&clientErr); err != nil {
-			return "", fmt.Errorf("error unmarshaling error response: %w", err)
+			return err.Error(), fmt.Errorf("error unmarshaling error response: %w", err)
 		}
-		return "", fmt.Errorf("API error: %v", clientErr)
+		return clientErr.Error["message"], fmt.Errorf("API error: %v", clientErr)
 	}
 
 	// Unmarshal the successful response
 	var response types.ChatCompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return "", fmt.Errorf("error unmarshaling chat completion response: %w", err)
+		return err.Error(), fmt.Errorf("error unmarshaling chat completion response: %w", err)
 	}
-
 	// Extract the content from the response
 	content := response.Choices[0].Message.Content
 
@@ -127,89 +162,107 @@ func Client(req types.ChatArgs) (string, error) {
 }
 
 func StreamCompleteClient(req types.ChatArgs) (string, error) {
-
+	checkEnvVar()
 	// Marshal the payload to JSON
 	reqJsonPayload, err := json.Marshal(req)
 	if err != nil {
-		return "", fmt.Errorf("error marshaling JSON: %w", err)
+		return err.Error(), fmt.Errorf("error marshaling JSON: %w", err)
 	}
 
 	// Create a new HTTP request
-	request, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(reqJsonPayload))
+	request, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer([]byte(reqJsonPayload)))
 	if err != nil {
-		return "", fmt.Errorf("error creating HTTP request: %w", err)
+		return err.Error(), fmt.Errorf("error creating HTTP request: %w", err)
 	}
 
 	// Set request headers
 	request.Header.Set("Accept", "text/event-stream")
+	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Cache-Control", "no-cache")
 	request.Header.Set("Connection", "keep-alive")
-	request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", os.Getenv("GROQ_API_KEY")))
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", os.Getenv("GROQ_API_KEY")))
 
 	// Make the request
-	resp, err := httpClient.Do(request)
+	resp, err := retryRequest(httpClient, request)
 	if err != nil {
-		return "", fmt.Errorf("error making HTTP request: %w", err)
+		return err.Error(), fmt.Errorf("error making HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	if resp.StatusCode == 400 {
+		// Read the response body
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err.Error(), fmt.Errorf("error reading response body: %w", err)
+		}
+		return string(bodyBytes), nil
 	}
-
+	// Check if the response status indicates an error
+	if resp.StatusCode >= 400 {
+		var clientErr types.ErrorResponse
+		if err := json.NewDecoder(resp.Body).Decode(&clientErr); err != nil {
+			return err.Error(), fmt.Errorf("error unmarshaling error response: %w", err)
+		}
+		return clientErr.Error.Message, fmt.Errorf("API error: %v", clientErr)
+	}
 	// Use a scanner to read the streaming response
 	scanner := bufio.NewScanner(resp.Body)
-	result := strings.Builder{}
+	result := []string{}
 
 	for scanner.Scan() {
-		line := scanner.Text()
-		// Check for data prefix
-		if strings.HasPrefix(line, "data:") {
-			noPrefixLine := strings.TrimPrefix(line, "data: ")
-			if noPrefixLine == "[DONE]" {
+
+		line := scanner.Bytes()
+
+		if bytes.HasPrefix(line, []byte(`event: message_stop)`)) {
+			break
+		}
+
+		if bytes.HasPrefix(line, []byte(`data: `)) {
+
+			data := bytes.TrimPrefix(line, []byte(`data: `))
+
+			if bytes.Contains(data, []byte(`[DONE]`)) {
 				break
 			}
-
 			var chunk types.ChatCompletionChunkResponse
-			if err := json.Unmarshal([]byte(noPrefixLine), &chunk); err != nil {
-				return "", fmt.Errorf("error unmarshaling chunk response: %w", err)
+			if err := json.Unmarshal(data, &chunk); err != nil {
+				return err.Error(), err
 			}
 
-			result.WriteString(chunk.Choices[0].Delta.Content)
+			result = append(result, chunk.Choices[0].Delta.Content)
 		}
-	}
 
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("error reading response body: %w", err)
 	}
+	finalResult := strings.Join(result, "")
 
-	return result.String(), nil
+	return finalResult, nil
 }
 
 func StreamClient(req types.ChatArgs, chunkchan chan string) error {
-
+	checkEnvVar()
 	// Marshal the payload to JSON
 	reqJsonPayload, err := json.Marshal(req)
 	if err != nil {
-		return fmt.Errorf("error marshaling JSON: %w", err)
+		return err
 	}
 
 	// Create a new HTTP request
-	request, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(reqJsonPayload))
+	request, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer([]byte(reqJsonPayload)))
 	if err != nil {
-		return fmt.Errorf("error creating HTTP request: %w", err)
+		return err
 	}
 
 	// Set request headers
 	request.Header.Set("Accept", "text/event-stream")
+	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Cache-Control", "no-cache")
 	request.Header.Set("Connection", "keep-alive")
-	request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", os.Getenv("GROQ_API_KEY")))
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", os.Getenv("GROQ_API_KEY")))
 
 	// Make the request
-	resp, err := httpClient.Do(request)
+	resp, err := retryRequest(httpClient, request)
 	if err != nil {
-		return fmt.Errorf("error making HTTP request: %w", err)
+		return err
 	}
 	defer resp.Body.Close()
 
@@ -222,25 +275,28 @@ func StreamClient(req types.ChatArgs, chunkchan chan string) error {
 
 		chunkchan <- string(bodyBytes)
 	}
-
+	// Check if the response status indicates an error
+	if resp.StatusCode >= 400 {
+		var clientErr types.ErrorResponse
+		if err := json.NewDecoder(resp.Body).Decode(&clientErr); err != nil {
+			return err
+		}
+		return fmt.Errorf(clientErr.Error.Message)
+	}
 	// Use a scanner to read the streaming response
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 
 		line := scanner.Bytes()
 
-		if bytes.HasPrefix(line, []byte(`[DONE]`)) {
-			break
-		}
 		if bytes.HasPrefix(line, []byte(`data: `)) {
+			if bytes.Contains(line, []byte(`data: [DONE]`)) {
+				break
+			}
 			data := bytes.TrimPrefix(line, []byte(`data: `))
 			var chunk types.ChatCompletionChunkResponse
 			if err := json.Unmarshal(data, &chunk); err != nil {
 				return err
-			}
-
-			if bytes.Contains(data, []byte(`[DONE]`)) {
-				break
 			}
 			chunkchan <- chunk.Choices[0].Delta.Content
 		}
