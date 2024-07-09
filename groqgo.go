@@ -111,6 +111,7 @@ func (params GroqChatArgs) StreamChat(prompt string, system string)  <-chan stri
 	chunkchan := make(chan string)
 
     go func() {
+		defer close(chunkchan)
         err := internal.StreamClient(params.ChatArgs, chunkchan)
         if err != nil {
            chunkchan <- err.Error()

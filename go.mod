@@ -4,6 +4,7 @@ go 1.20
 
 require github.com/joho/godotenv v1.5.1
 
+retract v1.0.3
 retract v1.0.2
 retract v1.0.1
 retract v1.0.0
